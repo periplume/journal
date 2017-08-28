@@ -1,0 +1,101 @@
+#!/bin/bash
+# create new journal file using format YYYY-MM-DD.txt eg 2016-03-07.txt
+# and open in vim
+# maintain all the journal files
+
+date=$(date +%F)
+# eg "2016-03-21" or %Y-%m-%d
+year=${date:0:4}
+month=${date:5:2}
+day=${date:8:2}
+timestamp=$(date)
+startfile=.$date.start
+journalfile=$date.txt
+lastjournal=$(<.lastjournal)
+lastjournalmonth=${lastjournal:5:2}
+lastjournalyear=${lastjournal:0:4}
+
+
+function closelasteffort
+{
+	# to be called when there is no existing dot startfile for today, ie
+	# when this is the first journal of the day, and the last journal should
+	# be processed and closed
+	laststartfile=.$lastjournal.start
+	lastjournal=$lastjournal.txt
+	mtimejournal=`stat -f "%m" $lastjournal`
+	mtimestart=`stat -f "%m" $laststartfile`
+	lasteffort=`expr $mtimejournal - $mtimestart`
+	echo $lasteffort >> $laststartfile
+	finalsum=`paste -sd+ $laststartfile | bc`
+	echo sum=$finalsum >> $laststartfile
+	totalwords=`wc $lastjournal | awk {'print $2'}`
+	echo wc=$totalwords >> $laststartfile
+	wpm=$(bc -l <<< "$totalwords/$finalsum*60" | cut -d'.' -f1)
+	echo wpm=$wpm >> $laststartfile
+	chmod ugo=r $lastjournal
+	chmod ugo=r $laststartfile
+}
+
+function updatelasteffort
+{
+	# get last effort time and append to dot startfile
+	# reset mtime on dot startfile
+	mtimejournal=$(stat -f "%m" $journalfile)
+	mtimestart=$(stat -f "%m" $startfile)
+	lasteffort=`expr $mtimejournal - $mtimestart`
+	echo $lasteffort >> $startfile
+}
+
+# check for existence of dot startfile for the day
+if [ -f $startfile ];
+then
+	# a startfile exists for today, therefore a journalfile exists
+	updatelasteffort
+	printf "\nstart> $timestamp \n" >> $journalfile
+	touch $startfile
+else
+	# this is a new journal entry for the day
+	closelasteffort
+	touch $startfile
+	touch $journalfile
+	printf "\nstart> $timestamp \n" >> $journalfile
+	ln -sf $journalfile today
+	# check if archiving is necessary
+	if [ $month -eq $lastjournalmonth -a $year -eq $lastjournalyear ];
+		then
+			# no need to archive, same month and year as last
+			# journal
+			echo "archive not necessary, same month and year"
+		else
+			# archive last month
+			archive=archive/$lastjournalyear/$lastjournalmonth
+			echo "archiving to $archive"
+			mkdir -p $archive
+			mv $lastjournalyear-$lastjournalmonth-??.txt $archive
+			mv .$lastjournalyear-$lastjournalmonth-??.start $archive
+			# compile final month report now
+			# what i want to know...how many days in month, how many
+			# journaled, how many words total, and the wpm.  need to
+			# normalize wpm, as an arbitrarily left open file will
+			# result in wpm=0, in which case i guess we throw out
+			# want to know days journaled, and how much time
+			summaryfile=archive/$lastjournalyear-$lastjournalmonth.summary
+			touch $summaryfile
+			# calculate number of days in the month
+			#$daysinmonth="daysinmonth=null-fixme"
+			#echo $daysinmonth >> $summaryfile
+			# sum total word count from .start files
+			totalwords=$(grep wc= $archive/.$lastjournalyear-$lastjournalmonth-??.start | cut -d= -f2 | paste -sd+ - | bc)
+			echo wc=$totalwords >> $summaryfile
+		fi
+fi
+
+# touch the dot lastjournal file, and store the date token in the file
+# this file will help determine the last journal whenever days are skipped.
+touch .lastjournal
+echo $date > .lastjournal
+
+# start vim on the new file
+vim -c WM "+ normal G$" +startinsert $journalfile && printf "\nstop> `date`\n" >> $journalfile
+

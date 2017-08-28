@@ -1,0 +1,10 @@
+# ignore everything
+/*
+
+# except the git control files
+!README.md
+!.gitignore
+
+# and the script itself
+!journal
+
