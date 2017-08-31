@@ -14,7 +14,7 @@ journalfile=$date.txt
 lastjournal=$(<.lastjournal)
 lastjournalmonth=${lastjournal:5:2}
 lastjournalyear=${lastjournal:0:4}
-
+scriptname=${0##*/}
 
 function closelasteffort
 {
@@ -47,55 +47,152 @@ function updatelasteffort
 	echo $lasteffort >> $startfile
 }
 
-# check for existence of dot startfile for the day
-if [ -f $startfile ];
+function archivelastmonth
+{
+	archive=archive/$lastjournalyear/$lastjournalmonth
+	echo "archiving to $archive"
+	mkdir -p $archive
+	mv $lastjournalyear-$lastjournalmonth-??.txt $archive
+	mv .$lastjournalyear-$lastjournalmonth-??.start $archive
+	summaryfile=archive/$lastjournalyear-$lastjournalmonth.summary
+	touch $summaryfile
+	totalwords=$(grep wc= $archive/.$lastjournalyear-$lastjournalmonth-??.start | cut -d= -f2 | paste -sd+ - | bc)
+	echo wc=$totalwords >> $summaryfile
+}
+
+function journal
+{
+	if [ -f $startfile ];
+	then
+		# a startfile exists for today, therefore a journalfile exists
+		updatelasteffort
+		printf "\nstart> $timestamp \n" >> $journalfile
+		touch $startfile
+	else
+		# this is a new journal entry for the day
+		closelasteffort
+		touch $startfile
+		touch $journalfile
+		printf "\nstart> $timestamp \n" >> $journalfile
+		ln -sf $journalfile today
+		# check if archiving is necessary
+		if [ $month -eq $lastjournalmonth -a $year -eq $lastjournalyear ];
+			then
+				# no need to archive, same month and year as last
+				# journal
+				echo "archive not necessary, same month and year"
+			else
+				archivelastmonth
+			fi
+	fi
+	touch .lastjournal
+	echo $date > .lastjournal
+	vim -c WM "+ normal G$" +startinsert $journalfile && printf "\nstop> `date`\n" >> $journalfile
+}
+
+function usage
+{
+	echo "usage: $scriptname"
+	echo "$scriptname report [week|month|year|all}"
+	echo "$scriptname encrypt [not yet functional]"
+	echo "$scriptname archive [to usb, eg, not yet funtional]" 
+	echo "$scriptname read [random|day|?]"
+	echo "$scriptname search <term> [timeframe]"
+	echo "$scriptname help"
+	exit
+}
+
+function report
+{
+	if [ $timeframe = "day" ]
+	then
+		words=`wc today | awk {'print $2'}`
+	elif [ "$timeframe" = "week" ]
+	then
+		words="week not implemented yet"
+	elif [ "$timeframe" = "month" ]
+	then
+		words=`wc *.txt | tail -n1 | awk {'print $2'}`
+	elif [ "$timeframe" = "year" ]
+	then
+		words="year not implemented yet"
+	elif [ "$timeframe" = "all" ]
+	then
+		words="all not implemented yet"
+	fi
+	echo "timeframe=$timeframe"
+	echo "total words = $words"
+	#grep wc archive/*.summary
+	#wc *.txt
+	exit
+}
+
+# if no arguments
+if [ "$#" -eq 0 ]
 then
-	# a startfile exists for today, therefore a journalfile exists
-	updatelasteffort
-	printf "\nstart> $timestamp \n" >> $journalfile
-	touch $startfile
+	# run journal as usual
+	journal
 else
-	# this is a new journal entry for the day
-	closelasteffort
-	touch $startfile
-	touch $journalfile
-	printf "\nstart> $timestamp \n" >> $journalfile
-	ln -sf $journalfile today
-	# check if archiving is necessary
-	if [ $month -eq $lastjournalmonth -a $year -eq $lastjournalyear ];
-		then
-			# no need to archive, same month and year as last
-			# journal
-			echo "archive not necessary, same month and year"
-		else
-			# archive last month
-			archive=archive/$lastjournalyear/$lastjournalmonth
-			echo "archiving to $archive"
-			mkdir -p $archive
-			mv $lastjournalyear-$lastjournalmonth-??.txt $archive
-			mv .$lastjournalyear-$lastjournalmonth-??.start $archive
-			# compile final month report now
-			# what i want to know...how many days in month, how many
-			# journaled, how many words total, and the wpm.  need to
-			# normalize wpm, as an arbitrarily left open file will
-			# result in wpm=0, in which case i guess we throw out
-			# want to know days journaled, and how much time
-			summaryfile=archive/$lastjournalyear-$lastjournalmonth.summary
-			touch $summaryfile
-			# calculate number of days in the month
-			#$daysinmonth="daysinmonth=null-fixme"
-			#echo $daysinmonth >> $summaryfile
-			# sum total word count from .start files
-			totalwords=$(grep wc= $archive/.$lastjournalyear-$lastjournalmonth-??.start | cut -d= -f2 | paste -sd+ - | bc)
-			echo wc=$totalwords >> $summaryfile
-		fi
+	# if there are arguments, parse them
+	while [ $# -gt 0 ]
+	do
+		case "$1" in
+			report)
+				# check if there are options to the verb
+				if [ -z $2 ]
+				then
+					timeframe=all
+					report
+				else
+					case "$2" in
+						day)
+							timeframe=day
+							report
+							;;
+						week)
+							timeframe=week
+							report
+							;;
+						month)
+							timeframe=month
+							report
+							;;
+						year)
+							timeframe=year
+							report
+							;;
+						all)
+							timeframe=all
+							report
+							;;
+						*)
+							echo "usage: journal report [day|week|month|year|all]"
+							exit
+							;;
+					esac
+				fi
+				;;
+			search)
+				echo "search function coming soon"
+				exit
+				;;
+			read)
+				echo "read function coming soon"
+				exit
+				;;
+			archive)
+				echo "archive function coming soon"
+				exit
+				;;
+			encrypt)
+				echo "encrypt funtion coming soon"
+				exit
+				;;
+			help|*)
+				usage
+				;;
+		esac
+	done
 fi
-
-# touch the dot lastjournal file, and store the date token in the file
-# this file will help determine the last journal whenever days are skipped.
-touch .lastjournal
-echo $date > .lastjournal
-
-# start vim on the new file
-vim -c WM "+ normal G$" +startinsert $journalfile && printf "\nstop> `date`\n" >> $journalfile
+exit
 
